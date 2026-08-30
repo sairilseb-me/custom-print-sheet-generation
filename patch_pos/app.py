@@ -17,6 +17,7 @@ as a plain-language banner.
 
 import base64
 import functools
+import sys
 from pathlib import Path
 
 import webview
@@ -26,7 +27,12 @@ from . import catalog, compositor, library, pdf_export, slots, thumbnails
 from .logging_setup import configure_logging, data_dir_for_library, get_logger
 from .order import Order
 
-FRONTEND_DIR = Path(__file__).parent.parent / "frontend"
+if getattr(sys, "frozen", False):
+    # Inside a PyInstaller bundle, bundled data files (see build.spec)
+    # extract to sys._MEIPASS instead of living next to this source file.
+    FRONTEND_DIR = Path(sys._MEIPASS) / "frontend"
+else:
+    FRONTEND_DIR = Path(__file__).parent.parent / "frontend"
 DEFAULT_WINDOW_SIZE = (1200, 800)
 MIN_WINDOW_SIZE = (900, 600)
 

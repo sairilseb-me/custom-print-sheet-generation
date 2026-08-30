@@ -4,3 +4,5 @@ __pycache__/
 .pytest_cache/
 scratch_output/
 *.egg-info/
+build/
+dist/

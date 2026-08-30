@@ -3,3 +3,4 @@ pytest
 pymupdf
 playwright
 pytest-playwright
+pyinstaller
