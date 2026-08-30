@@ -4,15 +4,12 @@ fixture 'drive' built from the small fixture PSDs (never the production
 template/library), per PROJECT_INSTRUCTIONS.md sections 9.2 and 10.
 """
 
-import shutil
-from pathlib import Path
-
 import pymupdf
 import pytest
 
 from patch_pos.app import Api
 
-FIXTURES_DIR = Path(__file__).parent.parent / "fixtures"
+from ..fixtures.build_drive import build_fixture_drive
 
 
 class _FakeWindow:
@@ -23,38 +20,11 @@ class _FakeWindow:
         return (self.save_path,) if self.save_path else None
 
 
-def _build_fixture_drive(tmp_path: Path) -> Path:
-    """tmp_path/drive/MyLibrary/<products>, tmp_path/drive/MP Templates/PATCH/<template>
-    -- mirrors the real flash-drive layout at a tiny scale."""
-    drive = tmp_path / "drive"
-    library_root = drive / "MyLibrary"
-
-    red_dest = library_root / "MP-P-001 - RED" / "3x2-images" / "1-image-template.psd"
-    red_dest.parent.mkdir(parents=True)
-    shutil.copy(FIXTURES_DIR / "source_red.psd", red_dest)
-
-    blue_dest = library_root / "MP-P-002 - BLUE" / "3x2-images" / "1-image-template.psd"
-    blue_dest.parent.mkdir(parents=True)
-    shutil.copy(FIXTURES_DIR / "source_blue.psd", blue_dest)
-
-    circular_dest = (
-        library_root / "MP-P-003 - YELLOW CIRCULAR" / "3x2-images" / "1-image-template-circular.psd"
-    )
-    circular_dest.parent.mkdir(parents=True)
-    shutil.copy(FIXTURES_DIR / "source_yellow_circular.psd", circular_dest)
-
-    template_dest = drive / "MP Templates" / "PATCH" / "A4-PATCH-TEMPLATE-NO MIRROR.psd"
-    template_dest.parent.mkdir(parents=True)
-    shutil.copy(FIXTURES_DIR / "mini_template.psd", template_dest)
-
-    return library_root
-
-
 @pytest.fixture
 def api(tmp_path) -> Api:
     api = Api()
     api.window = _FakeWindow(save_path=None)
-    library_root = _build_fixture_drive(tmp_path)
+    library_root = build_fixture_drive(tmp_path)
     result = api.rescan_library(str(library_root))
     assert result["ok"] is True
     return api
@@ -64,7 +34,7 @@ class TestRescanAndSearch:
     def test_rescan_reports_products_and_shapes(self, api):
         info = api.get_library_info()
         assert info["ok"] is True
-        assert info["total_products"] == 3
+        assert info["total_products"] == 4
 
     def test_search_finds_by_partial_name(self, api):
         result = api.search_products(query="red")
@@ -85,7 +55,7 @@ class TestSearchShapeFilter:
 
     def test_no_shape_filter_returns_everything(self, api):
         result = api.search_products(shape=None)
-        assert result["total"] == 3
+        assert result["total"] == 4
 
 
 class TestThumbnails:

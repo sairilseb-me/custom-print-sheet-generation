@@ -3,37 +3,73 @@
 <head>
 <meta charset="utf-8">
 <title>Print Sheet POS</title>
-<style>
-  body { font-family: -apple-system, sans-serif; margin: 2rem; color: #222; }
-  button { padding: 0.5rem 1rem; margin-right: 0.5rem; }
-  #log { margin-top: 1rem; white-space: pre-wrap; font-family: monospace; font-size: 0.85rem; color: #555; }
-</style>
+<link rel="stylesheet" href="style.css">
 </head>
 <body>
-  <h1>Print Sheet POS</h1>
-  <p>Shell placeholder -- the real product grid / order / preview UI is built in the next phase.</p>
+  <header id="topbar">
+    <h1>Print Sheet POS</h1>
+    <div id="library-summary" class="muted">No library loaded</div>
+    <button id="rescan-btn">Rescan Library</button>
+  </header>
 
-  <button id="pick-folder">Select Library Folder</button>
-  <button id="pick-save">Choose PDF Save Path</button>
+  <div id="error-banner" class="banner banner-error" hidden></div>
+  <div id="success-banner" class="banner banner-success" hidden></div>
 
-  <div id="log"></div>
+  <main id="no-library-view">
+    <p>Select the product library folder to get started (e.g. "MNP Patch Master List" on the flash drive).</p>
+    <button id="select-library-btn">Select Library Folder</button>
+  </main>
 
-  <script>
-    function log(message) {
-      document.getElementById("log").textContent += message + "\n";
-    }
+  <main id="app-view" hidden>
+    <section id="left-column">
+      <div id="template-picker">
+        <span>Template:</span>
+        <button class="template-btn" data-shape="rectangular">Rectangular (8 slots)</button>
+        <button class="template-btn" data-shape="circular">Circular (6 slots)</button>
+        <span id="template-locked-note" class="muted" hidden>Clear the order to change template</span>
+      </div>
 
-    window.addEventListener("pywebviewready", () => {
-      document.getElementById("pick-folder").addEventListener("click", async () => {
-        const path = await window.pywebview.api.select_library_folder();
-        log("Library folder: " + (path ?? "(cancelled)"));
-      });
+      <div id="product-search">
+        <input id="search-input" type="text" placeholder="Search by product code or name...">
+      </div>
 
-      document.getElementById("pick-save").addEventListener("click", async () => {
-        const path = await window.pywebview.api.select_pdf_save_path("print_sheet.pdf");
-        log("Save path: " + (path ?? "(cancelled)"));
-      });
-    });
-  </script>
+      <div id="product-grid"></div>
+
+      <div id="pagination">
+        <button id="prev-page-btn">&larr; Prev</button>
+        <span id="page-info" class="muted"></span>
+        <button id="next-page-btn">Next &rarr;</button>
+      </div>
+    </section>
+
+    <section id="right-column">
+      <div id="order-panel">
+        <h2>Current Order</h2>
+        <div id="order-lines"></div>
+        <div id="order-total" class="muted"></div>
+      </div>
+
+      <div id="preview-panel">
+        <h2>Print Sheet Preview</h2>
+        <div id="slot-grid"></div>
+        <div id="slot-usage" class="muted"></div>
+      </div>
+
+      <button id="generate-btn">Generate Print Sheet</button>
+    </section>
+
+    <section id="info-column">
+      <div id="library-info-panel" class="stat-panel">
+        <h3>Library Info</h3>
+        <div id="library-info-body"></div>
+      </div>
+      <div id="storage-panel" class="stat-panel">
+        <h3>Storage</h3>
+        <div id="storage-body"></div>
+      </div>
+    </section>
+  </main>
+
+  <script src="app.js"></script>
 </body>
 </html>

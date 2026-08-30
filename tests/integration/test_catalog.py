@@ -4,6 +4,7 @@ section 9.2. Uses a throwaway temp-file database per test, never the
 real flash-drive catalog.
 """
 
+import sqlite3
 from pathlib import Path
 
 import pytest
@@ -133,6 +134,45 @@ class TestDuplicateSku:
         results, total = search_products(conn, query="MP-P-000")
         assert total == 2
         assert {p.name for p in results} == {"LOGO", "NEW LOGO"}
+
+
+class TestStaleSchemaSelfHeal:
+    def test_pre_folder_path_schema_is_replaced_not_left_broken(self, tmp_path):
+        # Simulates a catalog.db written before the folder_path-keyed
+        # schema existed (sku as primary key) -- open_catalog must
+        # replace it rather than leaving it stuck via
+        # "CREATE TABLE IF NOT EXISTS".
+        db_path = tmp_path / "catalog.db"
+        conn = sqlite3.connect(db_path)
+        conn.executescript(
+            "CREATE TABLE products (sku TEXT PRIMARY KEY, sku_number INTEGER, name TEXT, "
+            "folder_path TEXT, shape TEXT, source_psd_path TEXT, thumbnail_path TEXT);"
+        )
+        conn.close()
+
+        conn = open_catalog(db_path)
+
+        pk_columns = {row[1] for row in conn.execute("PRAGMA table_info(products)") if row[5]}
+        assert pk_columns == {"folder_path"}
+
+        # A duplicate SKU in two different folders (real production data
+        # has this -- MP-P-000 is used by two folders) would violate the
+        # OLD schema's UNIQUE constraint on sku if the stale table had
+        # survived.
+        duplicate_sku_product = ProductRecord(
+            sku="MP-P-000",
+            sku_number=0,
+            name="ANOTHER LOGO VARIANT",
+            folder_path=Path("/fake/MP-P-000-b"),
+            shape="rectangular",
+            source_psd_path=Path("/fake/MP-P-000-b/3x2-images/1-image-template.psd"),
+            thumbnail_path=None,
+        )
+        duplicate_sku_products = [*FIXTURE_PRODUCTS, duplicate_sku_product]
+        save_scan(conn, ScanResult(products=duplicate_sku_products, total_size_bytes=1))
+
+        products, total = search_products(conn, query="")
+        assert total == len(duplicate_sku_products)
 
 
 class TestRescan:

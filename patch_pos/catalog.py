@@ -44,8 +44,24 @@ class LibraryInfo:
     last_scan_at: str | None
 
 
+def _has_stale_schema(conn: sqlite3.Connection) -> bool:
+    """True if a 'products' table already exists but predates the
+    folder_path-keyed schema (e.g. an old sku-keyed catalog.db, which
+    has the exact same column *names* -- only the primary key differs,
+    so that's what has to be checked) -- `CREATE TABLE IF NOT EXISTS`
+    alone would silently leave it broken forever rather than
+    self-healing."""
+    rows = conn.execute("PRAGMA table_info(products)").fetchall()
+    if not rows:
+        return False
+    primary_key_columns = {row[1] for row in rows if row[5]}  # row[5] is the `pk` flag
+    return primary_key_columns != {"folder_path"}
+
+
 def open_catalog(db_path: str | Path) -> sqlite3.Connection:
     conn = sqlite3.connect(db_path)
+    if _has_stale_schema(conn):
+        conn.executescript("DROP TABLE IF EXISTS products; DROP TABLE IF EXISTS scan_meta;")
     conn.executescript(_SCHEMA)
     return conn
 
