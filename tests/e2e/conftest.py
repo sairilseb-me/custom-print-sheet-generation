@@ -53,10 +53,14 @@ class ScriptedWindow:
     def create_file_dialog(self, dialog_type, **kwargs):
         import webview
 
+        # Mirrors pywebview's real macOS Cocoa backend exactly: FOLDER
+        # returns a tuple, SAVE returns a plain string. Getting this
+        # wrong here is what let the SAVE-path '/' truncation bug reach
+        # a real user despite a full test suite -- see Api.select_pdf_save_path.
         if dialog_type == webview.FileDialog.FOLDER:
             return (self.library_folder_result,) if self.library_folder_result else None
         if dialog_type == webview.FileDialog.SAVE:
-            return (self.save_path_result,) if self.save_path_result else None
+            return self.save_path_result or None
         return None
 
 

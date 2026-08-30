@@ -96,12 +96,18 @@ class Api:
         'Generate Print Sheet' click prompts fresh, per
         PROJECT_INSTRUCTIONS.md section 5, point 7 ("blank save dialog
         every time")."""
-        results = self.window.create_file_dialog(
+        result = self.window.create_file_dialog(
             webview.FileDialog.SAVE,
             save_filename=default_filename,
             file_types=("PDF Files (*.pdf)",),
         )
-        return results[0] if results else None
+        if not result:
+            return None
+        # pywebview's macOS Cocoa backend returns a plain string for SAVE
+        # dialogs (NSSavePanel.filename()), unlike FOLDER/OPEN dialogs
+        # which return a tuple -- indexing [0] on the string silently
+        # returned just its first character ('/') instead of the path.
+        return result if isinstance(result, str) else result[0]
 
     # -- library / catalog -------------------------------------------------
 

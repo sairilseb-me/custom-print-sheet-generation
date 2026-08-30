@@ -17,7 +17,12 @@ class _FakeWindow:
         self.save_path = save_path
 
     def create_file_dialog(self, dialog_type, **kwargs):
-        return (self.save_path,) if self.save_path else None
+        # Only ever used for SAVE in this file -- matches pywebview's
+        # real macOS Cocoa backend, which returns a plain string for
+        # SAVE dialogs (not a tuple like FOLDER/OPEN). See
+        # Api.select_pdf_save_path's docstring for why this distinction
+        # matters.
+        return self.save_path or None
 
 
 @pytest.fixture

@@ -39,7 +39,24 @@ class TestSelectLibraryFolder:
 
 
 class TestSelectPdfSavePath:
-    def test_returns_selected_path_with_default_filename(self):
+    def test_returns_full_path_when_dialog_returns_a_plain_string(self):
+        # pywebview's real macOS Cocoa backend returns a plain string for
+        # SAVE dialogs (NSSavePanel.filename()), unlike FOLDER/OPEN
+        # dialogs which return a tuple. Indexing [0] on that string
+        # silently returned just its first character ('/') instead of
+        # the path -- this is exactly the bug a real user hit in
+        # production (a FileExistsError "File exists: '/'" from
+        # reportlab trying to write to the root of the filesystem).
+        api = Api()
+        api.window = _FakeWindow(dialog_result="/Users/x/Desktop/print_sheet.pdf")
+
+        result = api.select_pdf_save_path("print_sheet.pdf")
+
+        assert result == "/Users/x/Desktop/print_sheet.pdf"
+
+    def test_returns_selected_path_when_dialog_returns_a_tuple(self):
+        # Some pywebview backends (or future versions) may return a
+        # tuple instead -- both shapes must work.
         api = Api()
         api.window = _FakeWindow(dialog_result=("/Users/x/Desktop/print_sheet.pdf",))
 
