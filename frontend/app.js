@@ -45,6 +45,19 @@ async function getThumbnail(folderPath) {
   return url;
 }
 
+// Fetches every not-yet-cached path in a single bridge round-trip instead
+// of one call per card -- see Api.get_thumbnails' docstring for why this
+// matters (this was the main source of the grid feeling slow to load).
+async function prefetchThumbnails(folderPaths) {
+  const uncached = folderPaths.filter((path) => !state.thumbCache.has(path));
+  if (uncached.length === 0) return;
+  const result = await api().get_thumbnails(uncached);
+  if (!result.ok) return;
+  for (const path of uncached) {
+    state.thumbCache.set(path, result.thumbnails[path] ?? null);
+  }
+}
+
 // -- library setup -----------------------------------------------------
 
 async function selectLibraryFolder() {
@@ -138,11 +151,13 @@ async function runSearch() {
     return;
   }
   state.totalProducts = result.total;
-  renderProductGrid(result.products);
+  await renderProductGrid(result.products);
   renderPagination();
 }
 
-function renderProductGrid(products) {
+async function renderProductGrid(products) {
+  await prefetchThumbnails(products.map((p) => p.folder_path));
+
   const grid = document.getElementById("product-grid");
   grid.innerHTML = "";
   const canAdd = state.order.template_shape !== null;
@@ -283,6 +298,8 @@ async function renderPreview() {
   const expanded = expandOrderToSlots();
   usageEl.textContent = `Used: ${expanded.length} / ${state.order.cap} slots`;
   usageEl.style.color = state.order.over_cap ? "#a11" : "";
+
+  await prefetchThumbnails(expanded.map((line) => line.folder_path));
 
   for (let i = 0; i < state.order.cap; i++) {
     const slot = document.createElement("div");

@@ -158,15 +158,33 @@ class Api:
         )
         return {"products": [_serialize_product(p) for p in products], "total": total}
 
+    def _thumbnail_data_url(self, product: library.ProductRecord) -> str:
+        data = thumbnails.get_thumbnail_bytes(product, cache_dir=self.data_dir / "thumbnail_cache")
+        mime = "image/jpeg" if product.thumbnail_path else "image/png"
+        return f"data:{mime};base64,{base64.b64encode(data).decode('ascii')}"
+
     @_api_method
     def get_thumbnail(self, folder_path: str) -> dict:
         self._require_catalog()
         product = catalog.get_product_by_folder(self.catalog_conn, folder_path)
         self._require(product is not None, f"Unknown product: {folder_path}")
+        return {"data_url": self._thumbnail_data_url(product)}
 
-        data = thumbnails.get_thumbnail_bytes(product, cache_dir=self.data_dir / "thumbnail_cache")
-        mime = "image/jpeg" if product.thumbnail_path else "image/png"
-        return {"data_url": f"data:{mime};base64,{base64.b64encode(data).decode('ascii')}"}
+    @_api_method
+    def get_thumbnails(self, folder_paths: list[str]) -> dict:
+        """Batched version of get_thumbnail -- the product grid needs up
+        to a page's worth of thumbnails at once, and fetching them one
+        JS-bridge round-trip at a time is the single biggest source of
+        perceived UI lag (measured ~50ms/call backend-side alone, before
+        the bridge's own per-call overhead). Missing/unknown products are
+        silently omitted rather than failing the whole batch."""
+        self._require_catalog()
+        result: dict[str, str] = {}
+        for folder_path in folder_paths:
+            product = catalog.get_product_by_folder(self.catalog_conn, folder_path)
+            if product is not None:
+                result[folder_path] = self._thumbnail_data_url(product)
+        return {"thumbnails": result}
 
     @_api_method
     def get_library_info(self) -> dict:

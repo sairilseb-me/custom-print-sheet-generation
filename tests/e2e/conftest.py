@@ -28,6 +28,7 @@ API_METHODS = [
     "rescan_library",
     "search_products",
     "get_thumbnail",
+    "get_thumbnails",
     "get_library_info",
     "get_disk_usage",
     "set_order_template",

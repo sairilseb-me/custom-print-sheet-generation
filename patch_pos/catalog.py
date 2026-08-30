@@ -59,7 +59,15 @@ def _has_stale_schema(conn: sqlite3.Connection) -> bool:
 
 
 def open_catalog(db_path: str | Path) -> sqlite3.Connection:
-    conn = sqlite3.connect(db_path)
+    # pywebview dispatches different JS-bridge calls on different worker
+    # threads (not necessarily the thread that created this connection),
+    # so the default check_same_thread=True raises
+    # "SQLite objects created in a thread can only be used in that same
+    # thread" the first time a call lands on a different thread than
+    # rescan_library() ran on. SQLite's own serialized threading mode
+    # (the default for the Python-bundled library) makes sharing one
+    # connection across threads safe for this app's usage pattern.
+    conn = sqlite3.connect(db_path, check_same_thread=False)
     if _has_stale_schema(conn):
         conn.executescript("DROP TABLE IF EXISTS products; DROP TABLE IF EXISTS scan_meta;")
     conn.executescript(_SCHEMA)

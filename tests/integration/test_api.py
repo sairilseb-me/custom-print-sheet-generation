@@ -65,6 +65,22 @@ class TestThumbnails:
         assert result["ok"] is True
         assert result["data_url"].startswith("data:image/png;base64,")
 
+    def test_batch_fetches_multiple_at_once(self, api):
+        products = api.search_products(shape=None)["products"]
+        paths = [p["folder_path"] for p in products]
+
+        result = api.get_thumbnails(paths)
+
+        assert result["ok"] is True
+        assert set(result["thumbnails"]) == set(paths)
+        for data_url in result["thumbnails"].values():
+            assert data_url.startswith("data:image/")
+
+    def test_batch_silently_skips_unknown_paths(self, api):
+        result = api.get_thumbnails(["/nonexistent/path"])
+        assert result["ok"] is True
+        assert result["thumbnails"] == {}
+
 
 class TestOrderFlow:
     def test_add_search_result_to_order_updates_summary(self, api):

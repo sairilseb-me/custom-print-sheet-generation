@@ -5,6 +5,7 @@ real flash-drive catalog.
 """
 
 import sqlite3
+import threading
 from pathlib import Path
 
 import pytest
@@ -134,6 +135,31 @@ class TestDuplicateSku:
         results, total = search_products(conn, query="MP-P-000")
         assert total == 2
         assert {p.name for p in results} == {"LOGO", "NEW LOGO"}
+
+
+class TestCrossThreadUsage:
+    def test_connection_usable_from_a_different_thread(self, tmp_path):
+        # pywebview dispatches different JS-bridge calls on different
+        # worker threads, not necessarily the thread that created the
+        # catalog connection during rescan_library() -- reproduces the
+        # "SQLite objects created in a thread can only be used in that
+        # same thread" crash seen with a real pywebview session.
+        conn = open_catalog(tmp_path / "catalog.db")
+        save_scan(conn, ScanResult(products=FIXTURE_PRODUCTS, total_size_bytes=1))
+
+        errors = []
+
+        def query_from_other_thread():
+            try:
+                search_products(conn, query="")
+            except sqlite3.ProgrammingError as exc:
+                errors.append(exc)
+
+        thread = threading.Thread(target=query_from_other_thread)
+        thread.start()
+        thread.join()
+
+        assert errors == []
 
 
 class TestStaleSchemaSelfHeal:
