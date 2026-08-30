@@ -122,6 +122,15 @@ def search_products(
     return [_row_to_product(row) for row in rows], total_count
 
 
+def get_product_by_folder(conn: sqlite3.Connection, folder_path: str) -> ProductRecord | None:
+    row = conn.execute(
+        "SELECT folder_path, sku, sku_number, name, shape, source_psd_path, thumbnail_path "
+        "FROM products WHERE folder_path = ?",
+        (folder_path,),
+    ).fetchone()
+    return _row_to_product(row) if row is not None else None
+
+
 def get_library_info(conn: sqlite3.Connection) -> LibraryInfo:
     row = conn.execute(
         "SELECT total_products, total_size_bytes, last_scan_at FROM scan_meta WHERE id = 1"

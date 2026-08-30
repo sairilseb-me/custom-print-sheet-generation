@@ -1,0 +1,184 @@
+"""Feature-level tests for the full Api wiring -- library scan through
+search, order, and print sheet generation -- against a fake window and a
+fixture 'drive' built from the small fixture PSDs (never the production
+template/library), per PROJECT_INSTRUCTIONS.md sections 9.2 and 10.
+"""
+
+import shutil
+from pathlib import Path
+
+import pymupdf
+import pytest
+
+from patch_pos.app import Api
+
+FIXTURES_DIR = Path(__file__).parent.parent / "fixtures"
+
+
+class _FakeWindow:
+    def __init__(self, save_path: str | None):
+        self.save_path = save_path
+
+    def create_file_dialog(self, dialog_type, **kwargs):
+        return (self.save_path,) if self.save_path else None
+
+
+def _build_fixture_drive(tmp_path: Path) -> Path:
+    """tmp_path/drive/MyLibrary/<products>, tmp_path/drive/MP Templates/PATCH/<template>
+    -- mirrors the real flash-drive layout at a tiny scale."""
+    drive = tmp_path / "drive"
+    library_root = drive / "MyLibrary"
+
+    red_dest = library_root / "MP-P-001 - RED" / "3x2-images" / "1-image-template.psd"
+    red_dest.parent.mkdir(parents=True)
+    shutil.copy(FIXTURES_DIR / "source_red.psd", red_dest)
+
+    blue_dest = library_root / "MP-P-002 - BLUE" / "3x2-images" / "1-image-template.psd"
+    blue_dest.parent.mkdir(parents=True)
+    shutil.copy(FIXTURES_DIR / "source_blue.psd", blue_dest)
+
+    circular_dest = (
+        library_root / "MP-P-003 - YELLOW CIRCULAR" / "3x2-images" / "1-image-template-circular.psd"
+    )
+    circular_dest.parent.mkdir(parents=True)
+    shutil.copy(FIXTURES_DIR / "source_yellow_circular.psd", circular_dest)
+
+    template_dest = drive / "MP Templates" / "PATCH" / "A4-PATCH-TEMPLATE-NO MIRROR.psd"
+    template_dest.parent.mkdir(parents=True)
+    shutil.copy(FIXTURES_DIR / "mini_template.psd", template_dest)
+
+    return library_root
+
+
+@pytest.fixture
+def api(tmp_path) -> Api:
+    api = Api()
+    api.window = _FakeWindow(save_path=None)
+    library_root = _build_fixture_drive(tmp_path)
+    result = api.rescan_library(str(library_root))
+    assert result["ok"] is True
+    return api
+
+
+class TestRescanAndSearch:
+    def test_rescan_reports_products_and_shapes(self, api):
+        info = api.get_library_info()
+        assert info["ok"] is True
+        assert info["total_products"] == 3
+
+    def test_search_finds_by_partial_name(self, api):
+        result = api.search_products(query="red")
+        assert result["ok"] is True
+        assert result["total"] == 1
+        assert result["products"][0]["sku"] == "MP-P-001"
+
+    def test_disk_usage_reports_something(self, api):
+        result = api.get_disk_usage()
+        assert result["ok"] is True
+        assert result["total_bytes"] > 0
+
+
+class TestThumbnails:
+    def test_no_jpg_falls_back_to_flattened_psd(self, api):
+        products = api.search_products(query="RED")["products"]
+        result = api.get_thumbnail(products[0]["folder_path"])
+        assert result["ok"] is True
+        assert result["data_url"].startswith("data:image/png;base64,")
+
+
+class TestOrderFlow:
+    def test_add_search_result_to_order_updates_summary(self, api):
+        api.set_order_template("rectangular")
+        red = api.search_products(query="RED")["products"][0]
+
+        result = api.add_to_order(red["folder_path"], quantity=2)
+
+        assert result["ok"] is True
+        assert result["total_items"] == 2
+        assert result["cap"] == 2  # mini_template fixture has 2 rect slots
+        assert result["over_cap"] is False
+
+    def test_adding_mismatched_shape_returns_error_not_exception(self, api):
+        api.set_order_template("rectangular")
+        circular = api.search_products(query="YELLOW")["products"][0]
+
+        result = api.add_to_order(circular["folder_path"])
+
+        assert result["ok"] is False
+        assert "circular" in result["error"] or "rectangular" in result["error"]
+
+    def test_quantity_over_cap_is_flagged(self, api):
+        api.set_order_template("rectangular")
+        red = api.search_products(query="RED")["products"][0]
+
+        result = api.add_to_order(red["folder_path"], quantity=3)  # cap is 2
+
+        assert result["ok"] is True
+        assert result["over_cap"] is True
+
+    def test_remove_and_clear(self, api):
+        api.set_order_template("rectangular")
+        red = api.search_products(query="RED")["products"][0]
+        api.add_to_order(red["folder_path"])
+
+        api.remove_from_order(red["folder_path"])
+        assert api.get_order()["total_items"] == 0
+
+        api.add_to_order(red["folder_path"])
+        api.clear_order()
+        assert api.get_order()["total_items"] == 0
+        assert api.get_order()["template_shape"] is None
+
+
+class TestGeneratePrintSheet:
+    def test_generates_valid_pdf_and_clears_order(self, api, tmp_path):
+        api.set_order_template("rectangular")
+        red = api.search_products(query="RED")["products"][0]
+        blue = api.search_products(query="BLUE")["products"][0]
+        api.add_to_order(red["folder_path"])
+        api.add_to_order(blue["folder_path"])
+
+        output_path = tmp_path / "output.pdf"
+        api.window.save_path = str(output_path)
+
+        result = api.generate_print_sheet()
+
+        assert result["ok"] is True
+        assert result["slots_used"] == 2
+        assert output_path.exists()
+
+        doc = pymupdf.open(output_path)
+        assert doc.page_count == 1
+        doc.close()
+
+        assert api.get_order()["total_items"] == 0  # cleared after success
+
+    def test_over_cap_returns_error_and_writes_no_file(self, api, tmp_path):
+        api.set_order_template("rectangular")
+        red = api.search_products(query="RED")["products"][0]
+        api.add_to_order(red["folder_path"], quantity=3)  # cap is 2
+
+        output_path = tmp_path / "should_not_exist.pdf"
+        api.window.save_path = str(output_path)
+
+        result = api.generate_print_sheet()
+
+        assert result["ok"] is False
+        assert not output_path.exists()
+
+    def test_cancelled_save_dialog_does_not_clear_order(self, api):
+        api.set_order_template("rectangular")
+        red = api.search_products(query="RED")["products"][0]
+        api.add_to_order(red["folder_path"])
+        api.window.save_path = None  # simulate Cancel
+
+        result = api.generate_print_sheet()
+
+        assert result["ok"] is True
+        assert result["cancelled"] is True
+        assert api.get_order()["total_items"] == 1  # untouched
+
+    def test_empty_order_returns_error(self, api):
+        api.set_order_template("rectangular")
+        result = api.generate_print_sheet()
+        assert result["ok"] is False
