@@ -78,6 +78,16 @@ class TestRescanAndSearch:
         assert result["total_bytes"] > 0
 
 
+class TestSearchShapeFilter:
+    def test_shape_filter_excludes_other_shape(self, api):
+        result = api.search_products(shape="rectangular")
+        assert result["total"] == 2  # RED and BLUE, not the circular one
+
+    def test_no_shape_filter_returns_everything(self, api):
+        result = api.search_products(shape=None)
+        assert result["total"] == 3
+
+
 class TestThumbnails:
     def test_no_jpg_falls_back_to_flattened_psd(self, api):
         products = api.search_products(query="RED")["products"]
@@ -99,8 +109,12 @@ class TestOrderFlow:
         assert result["over_cap"] is False
 
     def test_adding_mismatched_shape_returns_error_not_exception(self, api):
+        # Order.add() must guard against this even though the frontend is
+        # expected to filter the grid by the order's template (tested in
+        # TestSearchShapeFilter below) -- defense in depth against a
+        # stale grid or a direct Api call.
         api.set_order_template("rectangular")
-        circular = api.search_products(query="YELLOW")["products"][0]
+        circular = api.search_products(query="YELLOW", shape=None)["products"][0]
 
         result = api.add_to_order(circular["folder_path"])
 

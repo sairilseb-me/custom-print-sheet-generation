@@ -134,9 +134,22 @@ class Api:
         }
 
     @_api_method
-    def search_products(self, query: str = "", sort: str = "sku", limit: int = 50, offset: int = 0) -> dict:
+    def search_products(
+        self,
+        query: str = "",
+        shape: str | None = None,
+        sort: str = "sku",
+        limit: int = 50,
+        offset: int = 0,
+    ) -> dict:
+        """The frontend passes shape=<order's current template> once one
+        is picked, so the grid only shows products that could actually
+        be added (a mismatched product would otherwise just error on
+        add) -- see PROJECT_INSTRUCTIONS.md section 5, point 3."""
         self._require_catalog()
-        products, total = catalog.search_products(self.catalog_conn, query=query, sort=sort, limit=limit, offset=offset)
+        products, total = catalog.search_products(
+            self.catalog_conn, query=query, shape=shape, sort=sort, limit=limit, offset=offset
+        )
         return {"products": [_serialize_product(p) for p in products], "total": total}
 
     @_api_method

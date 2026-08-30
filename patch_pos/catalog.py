@@ -99,24 +99,33 @@ def _row_to_product(row: tuple) -> ProductRecord:
 def search_products(
     conn: sqlite3.Connection,
     query: str = "",
+    shape: str | None = None,
     sort: str = "sku",
     limit: int = 50,
     offset: int = 0,
 ) -> tuple[list[ProductRecord], int]:
-    """Partial (case-insensitive) match on SKU or name. Returns
-    (page of results, total match count) for pagination."""
+    """Partial (case-insensitive) match on SKU or name, optionally
+    restricted to one template shape -- since a product is one shape or
+    the other (section 4) and an order is locked to one template
+    (section 5), filtering the grid by the order's active shape avoids
+    showing products that would just error on add. Returns (page of
+    results, total match count) for pagination."""
     sort_column = _SORT_COLUMNS.get(sort, _SORT_COLUMNS["sku"])
     like_pattern = f"%{query}%"
+    where = "(sku LIKE ? OR name LIKE ?)"
+    params: list = [like_pattern, like_pattern]
+    if shape is not None:
+        where += " AND shape = ?"
+        params.append(shape)
 
     total_count = conn.execute(
-        "SELECT COUNT(*) FROM products WHERE sku LIKE ? OR name LIKE ?",
-        (like_pattern, like_pattern),
+        f"SELECT COUNT(*) FROM products WHERE {where}", params
     ).fetchone()[0]
 
     rows = conn.execute(
         "SELECT folder_path, sku, sku_number, name, shape, source_psd_path, thumbnail_path "
-        f"FROM products WHERE sku LIKE ? OR name LIKE ? ORDER BY {sort_column} LIMIT ? OFFSET ?",
-        (like_pattern, like_pattern, limit, offset),
+        f"FROM products WHERE {where} ORDER BY {sort_column} LIMIT ? OFFSET ?",
+        [*params, limit, offset],
     ).fetchall()
 
     return [_row_to_product(row) for row in rows], total_count

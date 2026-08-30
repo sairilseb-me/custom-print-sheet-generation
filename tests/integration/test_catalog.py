@@ -58,6 +58,16 @@ class TestSearchProducts:
         assert total == 1
         assert products[0].sku == "MP-P-051"
 
+    def test_filters_by_shape(self, catalog):
+        products, total = search_products(catalog, shape="circular")
+        assert total == 1
+        assert products[0].sku == "MP-P-352"
+
+    def test_shape_and_query_combine(self, catalog):
+        products, total = search_products(catalog, query="log", shape="rectangular")
+        assert total == 1  # "LOGO" is rectangular; "MAPUA LOGO CIRCULAR" is not
+        assert products[0].sku == "MP-P-000"
+
     def test_zero_matches(self, catalog):
         products, total = search_products(catalog, query="nonexistent product xyz")
         assert total == 0
