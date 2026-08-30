@@ -1,0 +1,39 @@
+<!doctype html>
+<html>
+<head>
+<meta charset="utf-8">
+<title>Print Sheet POS</title>
+<style>
+  body { font-family: -apple-system, sans-serif; margin: 2rem; color: #222; }
+  button { padding: 0.5rem 1rem; margin-right: 0.5rem; }
+  #log { margin-top: 1rem; white-space: pre-wrap; font-family: monospace; font-size: 0.85rem; color: #555; }
+</style>
+</head>
+<body>
+  <h1>Print Sheet POS</h1>
+  <p>Shell placeholder -- the real product grid / order / preview UI is built in the next phase.</p>
+
+  <button id="pick-folder">Select Library Folder</button>
+  <button id="pick-save">Choose PDF Save Path</button>
+
+  <div id="log"></div>
+
+  <script>
+    function log(message) {
+      document.getElementById("log").textContent += message + "\n";
+    }
+
+    window.addEventListener("pywebviewready", () => {
+      document.getElementById("pick-folder").addEventListener("click", async () => {
+        const path = await window.pywebview.api.select_library_folder();
+        log("Library folder: " + (path ?? "(cancelled)"));
+      });
+
+      document.getElementById("pick-save").addEventListener("click", async () => {
+        const path = await window.pywebview.api.select_pdf_save_path("print_sheet.pdf");
+        log("Save path: " + (path ?? "(cancelled)"));
+      });
+    });
+  </script>
+</body>
+</html>
