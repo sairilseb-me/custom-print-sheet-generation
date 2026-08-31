@@ -18,6 +18,12 @@ RECT_LAYOUT = TemplateLayout(
     ),
 )
 
+CIRCULAR_LAYOUT = TemplateLayout(
+    "circular",
+    (400, 300),
+    (Slot("1-image-template-circular", 20, 20, 100, 100),),
+)
+
 
 class TestSlotLabel:
     def test_rectangular(self):
@@ -84,3 +90,45 @@ class TestCompositeSheet:
         wrong_size = Image.new("RGB", (50, 50), (0, 0, 0))
         with pytest.raises(SourceSizeMismatchError):
             composite_sheet(RECT_LAYOUT, [wrong_size])
+
+
+class TestSlotStroke:
+    """5px black inside stroke drawn around each filled slot, as a
+    cut/registration guide -- rectangle for rectangular slots, circle
+    for circular slots. Only filled slots get one."""
+
+    def test_rectangular_slot_gets_inside_stroke(self):
+        # Slot 1: x=20,y=20,w=100,h=60 -> boundary x:20-120, y:20-80.
+        red = Image.new("RGB", (100, 60), (255, 0, 0))
+
+        sheet = composite_sheet(RECT_LAYOUT, [red])
+
+        # Outer edge of the stroke sits exactly on the slot boundary.
+        assert sheet.getpixel((20, 50)) == (0, 0, 0)
+        # Stroke grows inward 5px, not outward -- nothing outside the slot.
+        assert sheet.getpixel((19, 50)) == (255, 255, 255)
+        # Interior (away from the 5px band) keeps the pasted image color.
+        assert sheet.getpixel((70, 50)) == (255, 0, 0)
+
+    def test_empty_slot_gets_no_stroke(self):
+        red = Image.new("RGB", (100, 60), (255, 0, 0))
+
+        sheet = composite_sheet(RECT_LAYOUT, [red])  # slot 2 left empty
+
+        assert sheet.getpixel((200, 50)) == (255, 255, 255)  # no stroke drawn
+
+    def test_circular_slot_gets_circular_inside_stroke(self):
+        # Slot: x=20,y=20,w=100,h=100 -> a circle inscribed in that
+        # square, horizontal edges at x=20 and x=120 along the vertical center.
+        yellow = Image.new("RGB", (100, 100), (230, 200, 0))
+
+        sheet = composite_sheet(CIRCULAR_LAYOUT, [yellow])
+
+        assert sheet.getpixel((20, 70)) == (0, 0, 0)  # left edge of the circle
+        assert sheet.getpixel((19, 70)) == (255, 255, 255)  # nothing outside it
+        assert sheet.getpixel((70, 70)) == (230, 200, 0)  # interior untouched
+        # A rectangle stroke would blacken the square's corner; a circle
+        # stroke must not, since the corner lies outside the circle --
+        # it stays whatever was pasted there (the square source image
+        # fills its whole bounding box, corners included).
+        assert sheet.getpixel((21, 21)) == (230, 200, 0)
