@@ -113,10 +113,15 @@ Notes:
     and adds them to the matching order accordingly — the app does not
     need to enforce or auto-detect shape compatibility beyond template
     slot geometry.
-  - Real source PSDs are already sized to the exact slot dimensions
-    (975x675 for rect, 975x975 for circular) — verified by sampling
-    dozens of files. Compositing in the common case is "flatten and paste
-    at (x, y)", not resize-and-fit.
+  - Real source PSDs' **canvas** is always sized to the exact slot
+    dimensions (975x675 for rect, 975x975 for circular) — verified by
+    sampling dozens of files. But the actual **content** within that
+    canvas often doesn't fill it: many files carry a baked-in
+    transparent margin of varying size (not a fixed constant — differs
+    per file, e.g. 24px on one product, 21px on another), while a few
+    are genuinely full-bleed already. Left uncorrected, this shows as an
+    unwanted white gap between the patch and its slot boundary (and the
+    stroke — see below). See "Decision — trim and fit" below.
   - ~11% of folders (85/799) don't have the expected file. Most of those
     are legitimately circular-only products (fine). But ~40 use an older,
     different structure entirely (`PATCH-PHOTO-TEMPLATE-CUSTOM
@@ -135,11 +140,20 @@ Notes:
   the product-grid thumbnail when present (much cheaper than flattening a
   PSD). Fall back to flattening the source PSD into a low-res preview only
   when no `Product Photo` jpg exists in the folder.
-- **Decision — source size mismatch:** if a source PSD's dimensions don't
-  exactly match its slot size, treat it as an error — do not
-  auto-resize/crop it. There is no in-app "edit source" / "open in
-  editor" feature; fixing a bad source PSD is an out-of-band task the
-  operator already does directly in Photoshop on the flash drive.
+- **Decision — trim and fit (supersedes an earlier "reject on mismatch"
+  decision):** confirmed against real generated output that source PSDs'
+  baked-in margins (see above) must not be left in — every filled slot
+  should be edge-to-edge with no gap. The compositor crops each flattened
+  source to its actual content bounding box (via alpha, so a solid
+  black-background patch is never mistaken for "empty" — only a fully
+  transparent source is) and stretches that trimmed content to exactly
+  fill the slot. A handful of rect sources have a very slightly
+  non-symmetric margin, so the stretch isn't always perfectly
+  aspect-preserving, but the distortion is negligible for these
+  logo/text patches — full-bleed with no gap took priority. There is
+  still no in-app "edit source" / "open in editor" feature; a genuinely
+  broken source (fully blank/transparent) is a hard error, fixed
+  out-of-band directly in Photoshop on the flash drive.
 - Build a local catalog/index (see storage below) recording at minimum:
   SKU/product code, display name, source PSD path, and a thumbnail image
   path (per the decision above).
@@ -266,8 +280,9 @@ current one.
 
 ### 9.1 Unit tests
 - Cover every pure function independently: slot-coordinate extraction,
-  source-size mismatch detection (error path — no auto-resize/fit, see
-  §4), filename/sequence labeling (`1-image-template.pdf` ... up to the
+  trim-and-fit behavior (off-size/margined sources stretched to fill the
+  slot, a fully transparent source is still a hard error — see §4),
+  filename/sequence labeling (`1-image-template.pdf` ... up to the
   template's slot cap), SKU partial-match search logic, quantity-to-slot
   expansion (a line quantity of N occupies N slots — see §5), and the
   8-slot/6-slot cap check against summed quantity (including the "reject

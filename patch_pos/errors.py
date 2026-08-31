@@ -25,12 +25,10 @@ class SlotCapExceededError(PatchPosError):
         )
 
 
-class SourceSizeMismatchError(PatchPosError):
-    def __init__(self, slot_name: str, expected: tuple[int, int], actual: tuple[int, int]):
+class EmptySourceImageError(PatchPosError):
+    """A source PSD flattened to a fully blank/transparent image -- there's
+    no content bounding box to trim to and fit into the slot."""
+
+    def __init__(self, slot_name: str):
         self.slot_name = slot_name
-        self.expected = expected
-        self.actual = actual
-        super().__init__(
-            f"Source image for slot {slot_name!r} is {actual[0]}x{actual[1]}px, "
-            f"expected exactly {expected[0]}x{expected[1]}px"
-        )
+        super().__init__(f"Source image for slot {slot_name!r} is fully blank/transparent")

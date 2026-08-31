@@ -6,7 +6,7 @@ import pytest
 from PIL import Image
 
 from patch_pos.compositor import check_cap, composite_sheet, slot_label
-from patch_pos.errors import SlotCapExceededError, SourceSizeMismatchError
+from patch_pos.errors import EmptySourceImageError, SlotCapExceededError
 from patch_pos.slots import Slot, TemplateLayout
 
 RECT_LAYOUT = TemplateLayout(
@@ -75,21 +75,49 @@ class TestCompositeSheet:
         with pytest.raises(SlotCapExceededError):
             composite_sheet(RECT_LAYOUT, [red, red, red])
 
-    def test_size_mismatch_raises(self):
-        wrong_size = Image.new("RGB", (50, 50), (0, 0, 0))
-        with pytest.raises(SourceSizeMismatchError) as exc_info:
-            composite_sheet(RECT_LAYOUT, [wrong_size])
-        assert exc_info.value.slot_name == "1-image-template"
-        assert exc_info.value.expected == (100, 60)
-        assert exc_info.value.actual == (50, 50)
+    def test_off_size_source_is_stretched_to_fill_the_slot(self):
+        # Real source PSDs vary in size/margin (see
+        # PROJECT_INSTRUCTIONS.md section 4, "Decision -- trim and fit"),
+        # so an off-size source is trimmed to content and stretched to
+        # fill the slot exactly rather than rejected.
+        wrong_size = Image.new("RGB", (50, 50), (255, 0, 0))
 
-    def test_does_not_auto_resize_or_crop(self):
-        # A mismatch must be a hard error, never a silent resize -- see
-        # PROJECT_INSTRUCTIONS.md section 4 ("Decision -- source size
-        # mismatch").
-        wrong_size = Image.new("RGB", (50, 50), (0, 0, 0))
-        with pytest.raises(SourceSizeMismatchError):
-            composite_sheet(RECT_LAYOUT, [wrong_size])
+        sheet = composite_sheet(RECT_LAYOUT, [wrong_size])
+
+        assert sheet.getpixel((70, 50)) == (255, 0, 0)  # fills the whole slot
+        assert sheet.getpixel((250, 50)) == (255, 255, 255)  # slot 2 still empty
+
+    def test_source_with_transparent_margin_is_trimmed_and_fit(self):
+        # A source smaller than its slot, centered in a larger
+        # transparent canvas -- exactly what real source PSDs with a
+        # baked-in margin look like.
+        source = Image.new("RGBA", (200, 120), (0, 0, 0, 0))
+        content = Image.new("RGBA", (100, 60), (0, 255, 0, 255))
+        source.paste(content, (50, 30))
+
+        sheet = composite_sheet(RECT_LAYOUT, [source])
+
+        # The trimmed green content now fills the entire slot -- no gap
+        # between it and the slot boundary/stroke.
+        assert sheet.getpixel((25, 25)) == (0, 255, 0)  # near slot's top-left corner
+        assert sheet.getpixel((115, 75)) == (0, 255, 0)  # near slot's bottom-right corner
+
+    def test_solid_black_background_is_not_treated_as_empty(self):
+        # getbbox() on a plain RGB image treats pure black as "empty" --
+        # a solid black-background patch (common in this library) must
+        # not be wrongly flagged as blank.
+        black = Image.new("RGB", (100, 60), (0, 0, 0))
+
+        sheet = composite_sheet(RECT_LAYOUT, [black])  # must not raise
+
+        assert sheet.getpixel((70, 50)) == (0, 0, 0)
+
+    def test_fully_transparent_source_raises(self):
+        blank = Image.new("RGBA", (100, 60), (0, 0, 0, 0))
+
+        with pytest.raises(EmptySourceImageError) as exc_info:
+            composite_sheet(RECT_LAYOUT, [blank])
+        assert exc_info.value.slot_name == "1-image-template"
 
 
 class TestSlotStroke:

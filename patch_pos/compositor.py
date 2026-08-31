@@ -7,7 +7,7 @@ from pathlib import Path
 from PIL import Image, ImageDraw
 from psd_tools import PSDImage
 
-from .errors import SlotCapExceededError, SourceSizeMismatchError
+from .errors import EmptySourceImageError, SlotCapExceededError
 from .slots import TemplateLayout
 
 STROKE_WIDTH_PX = 5
@@ -31,24 +31,43 @@ def flatten_source_psd(path: str | Path) -> Image.Image:
     return PSDImage.open(path).composite()
 
 
+def _trim_and_fit(image: Image.Image, target_size: tuple[int, int], slot_name: str) -> Image.Image:
+    """Crop away any transparent margin around the actual artwork, then
+    stretch to exactly fill the slot. Real source PSDs vary in how much
+    margin they carry (some are full-bleed, some have a baked-in margin
+    of a different size per file) -- trimming to content and fitting to
+    the slot is what eliminates a visible gap between the patch and its
+    slot boundary/stroke, regardless of how a given file was authored.
+    """
+    # getbbox() on a plain RGB image treats pure black as "empty" (no
+    # alpha channel to distinguish opaque black from nothing) -- convert
+    # to RGBA first so a solid black-background patch isn't wrongly
+    # flagged as blank.
+    if image.mode != "RGBA":
+        image = image.convert("RGBA")
+    bbox = image.getbbox()
+    if bbox is None:
+        raise EmptySourceImageError(slot_name)
+    return image.crop(bbox).resize(target_size)
+
+
 def composite_sheet(layout: TemplateLayout, source_images: list[Image.Image]) -> Image.Image:
-    """Paste each source image into its slot, in order, with a 5px inside
-    stroke drawn around each filled slot (rectangle for the rectangular
-    template, circle for the circular one) as a cut/registration guide.
-    Only filled slots get a stroke -- empty/unused slots stay blank.
-    Raises SlotCapExceededError if there are more images than slots, and
-    SourceSizeMismatchError if an image isn't exactly its slot's size --
-    source PSDs are expected to already be sized to match (see
-    PROJECT_INSTRUCTIONS.md section 4); the engine does not resize/crop.
+    """Paste each source image into its slot, in order -- trimmed to its
+    actual content and stretched to fill the slot exactly (see
+    _trim_and_fit) -- with a 5px inside stroke drawn around each filled
+    slot (rectangle for the rectangular template, circle for the
+    circular one) as a cut/registration guide. Only filled slots get a
+    stroke -- empty/unused slots stay blank. Raises SlotCapExceededError
+    if there are more images than slots, and EmptySourceImageError if a
+    source is fully blank/transparent.
     """
     check_cap(len(source_images), layout)
 
     canvas = Image.new("RGB", layout.canvas_size, "white")
     draw = ImageDraw.Draw(canvas)
     for slot, image in zip(layout.slots, source_images):
-        expected = (round(slot.w), round(slot.h))
-        if image.size != expected:
-            raise SourceSizeMismatchError(slot.name, expected, image.size)
+        target_size = (round(slot.w), round(slot.h))
+        image = _trim_and_fit(image, target_size, slot.name)
 
         position = (round(slot.x), round(slot.y))
         if image.mode == "RGBA":
