@@ -23,7 +23,7 @@ from pathlib import Path
 import webview
 from psd_tools import PSDImage
 
-from . import catalog, compositor, library, pdf_export, slots, thumbnails
+from . import catalog, compositor, library, pdf_export, psd_export, slots, thumbnails
 from .logging_setup import configure_logging, data_dir_for_library, get_logger
 from .order import Order
 
@@ -107,6 +107,19 @@ class Api:
         # dialogs (NSSavePanel.filename()), unlike FOLDER/OPEN dialogs
         # which return a tuple -- indexing [0] on the string silently
         # returned just its first character ('/') instead of the path.
+        return result if isinstance(result, str) else result[0]
+
+    def select_psd_save_path(self, default_filename: str = "print_sheet.psd") -> str | None:
+        """Native save dialog for the editable-PSD export path -- same
+        blank-every-time behavior as select_pdf_save_path, per
+        PROJECT_INSTRUCTIONS.md section 5, point 7."""
+        result = self.window.create_file_dialog(
+            webview.FileDialog.SAVE,
+            save_filename=default_filename,
+            file_types=("Photoshop Files (*.psd)",),
+        )
+        if not result:
+            return None
         return result if isinstance(result, str) else result[0]
 
     # -- library / catalog -------------------------------------------------
@@ -266,8 +279,7 @@ class Api:
 
     # -- print sheet generation --------------------------------------------
 
-    @_api_method
-    def generate_print_sheet(self) -> dict:
+    def _layout_and_ordered_products(self) -> tuple[slots.TemplateLayout, list]:
         self._require(self.order.template_shape is not None, "Pick a template before generating")
         self._require(self.template_layouts is not None, "No library/template loaded yet")
         layout = slots.get_layout(self.template_layouts, self.order.template_shape)
@@ -275,6 +287,11 @@ class Api:
         ordered_products = self.order.expand_to_slot_order()
         self._require(len(ordered_products) > 0, "Order is empty")
         compositor.check_cap(len(ordered_products), layout)
+        return layout, ordered_products
+
+    @_api_method
+    def generate_print_sheet(self) -> dict:
+        layout, ordered_products = self._layout_and_ordered_products()
 
         save_path = self.select_pdf_save_path(default_filename="print_sheet.pdf")
         if save_path is None:
@@ -286,6 +303,30 @@ class Api:
 
         get_logger().info(
             "Generated print sheet: %s (%d/%d slots)", save_path, len(ordered_products), layout.cap
+        )
+        self.order.clear()
+
+        return {"path": save_path, "slots_used": len(ordered_products), "cap": layout.cap}
+
+    @_api_method
+    def export_editable_psd(self) -> dict:
+        """Alternate, manual-editing path alongside generate_print_sheet:
+        composites the same order into the same slots, but writes a
+        layered .psd (one movable/resizable layer per patch, plus a
+        Guides and a Background layer) instead of a flattened PDF, so the
+        operator can adjust a specific order by hand in Photoshop before
+        printing -- see psd_export.py."""
+        layout, ordered_products = self._layout_and_ordered_products()
+
+        save_path = self.select_psd_save_path(default_filename="print_sheet.psd")
+        if save_path is None:
+            return {"cancelled": True}
+
+        images = [compositor.flatten_source_psd(p.source_psd_path) for p in ordered_products]
+        psd_export.export_editable_psd(layout, images, save_path)
+
+        get_logger().info(
+            "Exported editable PSD: %s (%d/%d slots)", save_path, len(ordered_products), layout.cap
         )
         self.order.clear()
 

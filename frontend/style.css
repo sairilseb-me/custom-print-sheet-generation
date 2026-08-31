@@ -155,5 +155,19 @@ body {
 }
 #generate-btn:disabled { background: #aac0f0; cursor: not-allowed; }
 
+#generate-actions { display: flex; flex-direction: column; gap: 0.5rem; }
+
+#export-psd-btn {
+  padding: 0.55rem;
+  font-size: 0.85rem;
+  font-weight: 600;
+  background: #fff;
+  color: #2461eb;
+  border: 1px solid #2461eb;
+  border-radius: 8px;
+  cursor: pointer;
+}
+#export-psd-btn:disabled { color: #aac0f0; border-color: #aac0f0; cursor: not-allowed; }
+
 .stat-panel h3 { margin: 0 0 0.4rem; font-size: 0.9rem; }
 .stat-panel div { font-size: 0.82rem; color: #444; }

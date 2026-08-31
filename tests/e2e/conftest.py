@@ -38,6 +38,8 @@ API_METHODS = [
     "clear_order",
     "get_order",
     "generate_print_sheet",
+    "select_psd_save_path",
+    "export_editable_psd",
 ]
 
 

@@ -2,3 +2,5 @@ psd-tools
 Pillow
 reportlab
 pywebview
+pytoshop
+six

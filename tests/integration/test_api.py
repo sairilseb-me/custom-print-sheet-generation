@@ -187,3 +187,61 @@ class TestGeneratePrintSheet:
         api.set_order_template("rectangular")
         result = api.generate_print_sheet()
         assert result["ok"] is False
+
+
+class TestExportEditablePsd:
+    """The manual-editing alternative to generate_print_sheet -- see
+    psd_export.py. Mirrors TestGeneratePrintSheet's coverage."""
+
+    def test_writes_layered_psd_and_clears_order(self, api, tmp_path):
+        from psd_tools import PSDImage
+
+        api.set_order_template("rectangular")
+        red = api.search_products(query="RED")["products"][0]
+        blue = api.search_products(query="BLUE")["products"][0]
+        api.add_to_order(red["folder_path"])
+        api.add_to_order(blue["folder_path"])
+
+        output_path = tmp_path / "output.psd"
+        api.window.save_path = str(output_path)
+
+        result = api.export_editable_psd()
+
+        assert result["ok"] is True
+        assert result["slots_used"] == 2
+        assert output_path.exists()
+
+        layer_names = {layer.name for layer in PSDImage.open(output_path)}
+        assert layer_names == {"Background", "Guides", "1-image-template", "2-image-template"}
+
+        assert api.get_order()["total_items"] == 0  # cleared after success
+
+    def test_over_cap_returns_error_and_writes_no_file(self, api, tmp_path):
+        api.set_order_template("rectangular")
+        red = api.search_products(query="RED")["products"][0]
+        api.add_to_order(red["folder_path"], quantity=3)  # cap is 2
+
+        output_path = tmp_path / "should_not_exist.psd"
+        api.window.save_path = str(output_path)
+
+        result = api.export_editable_psd()
+
+        assert result["ok"] is False
+        assert not output_path.exists()
+
+    def test_cancelled_save_dialog_does_not_clear_order(self, api):
+        api.set_order_template("rectangular")
+        red = api.search_products(query="RED")["products"][0]
+        api.add_to_order(red["folder_path"])
+        api.window.save_path = None  # simulate Cancel
+
+        result = api.export_editable_psd()
+
+        assert result["ok"] is True
+        assert result["cancelled"] is True
+        assert api.get_order()["total_items"] == 1  # untouched
+
+    def test_empty_order_returns_error(self, api):
+        api.set_order_template("rectangular")
+        result = api.export_editable_psd()
+        assert result["ok"] is False

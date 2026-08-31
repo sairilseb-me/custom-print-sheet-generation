@@ -7,6 +7,7 @@ flow.
 """
 
 import pymupdf
+from psd_tools import PSDImage
 
 from ..fixtures.build_drive import build_fixture_drive
 
@@ -79,6 +80,40 @@ class TestCircularFlow:
         doc = pymupdf.open(output_path)
         assert doc.page_count == 1
         doc.close()
+
+
+class TestExportEditablePsdFlow:
+    """The manual-editing alternative to Generate Print Sheet -- see
+    psd_export.py. One flow suffices here since TestRectangularFlow /
+    TestCircularFlow above already cover the shared add-to-order path."""
+
+    def test_launch_through_export_and_verify_psd(self, page, scripted_window, tmp_path):
+        _load_library(page, scripted_window, tmp_path)
+
+        page.click('.template-btn[data-shape="rectangular"]')
+        page.wait_for_selector('.template-btn[data-shape="rectangular"].active')
+
+        page.fill("#search-input", "RED")
+        page.wait_for_timeout(400)  # debounce
+        _add_product_to_order(page, "MP-P-001")
+
+        page.wait_for_selector(".order-line")
+        assert "1 / 2 slots" in page.text_content("#order-total")
+
+        output_path = tmp_path / "rect_output.psd"
+        scripted_window.save_path_result = str(output_path)
+        page.click("#export-psd-btn")
+
+        page.wait_for_selector("#success-banner:not([hidden])")
+        assert "Saved to" in page.text_content("#success-banner")
+        assert output_path.exists()
+
+        layer_names = {layer.name for layer in PSDImage.open(output_path)}
+        assert layer_names == {"Background", "Guides", "1-image-template"}
+
+        # Order clears after a successful export, same as generate.
+        page.wait_for_selector("#order-total")
+        assert "0" in page.text_content("#order-total").split("/")[0]
 
 
 class TestOverCapFlow:

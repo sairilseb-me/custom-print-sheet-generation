@@ -273,8 +273,9 @@ function renderOrder() {
     totalEl.textContent = `${state.order.total_items} item(s) -- pick a template to see slot usage`;
   }
 
-  const generateBtn = document.getElementById("generate-btn");
-  generateBtn.disabled = state.order.total_items === 0 || state.order.over_cap;
+  const disabled = state.order.total_items === 0 || state.order.over_cap;
+  document.getElementById("generate-btn").disabled = disabled;
+  document.getElementById("export-psd-btn").disabled = disabled;
 }
 
 function expandOrderToSlots() {
@@ -338,10 +339,10 @@ async function refreshOrder() {
 
 // -- generate ---------------------------------------------------------------
 
-async function generatePrintSheet() {
-  const btn = document.getElementById("generate-btn");
+async function runGenerateAction(apiMethodName, btnId) {
+  const btn = document.getElementById(btnId);
   btn.disabled = true;
-  const result = await api().generate_print_sheet();
+  const result = await api()[apiMethodName]();
   if (!result.ok) {
     showError(result.error);
   } else if (result.cancelled) {
@@ -352,6 +353,18 @@ async function generatePrintSheet() {
     await runSearch();
   }
   btn.disabled = state.order.total_items === 0 || state.order.over_cap;
+}
+
+function generatePrintSheet() {
+  return runGenerateAction("generate_print_sheet", "generate-btn");
+}
+
+function exportEditablePsd() {
+  // Alternate, manual-editing path alongside generatePrintSheet -- writes
+  // a layered .psd (one movable layer per patch) instead of a flattened
+  // PDF, for cases where an order needs a manual touch-up in Photoshop
+  // before printing.
+  return runGenerateAction("export_editable_psd", "export-psd-btn");
 }
 
 // -- wiring -------------------------------------------------------------
@@ -392,4 +405,5 @@ window.addEventListener("pywebviewready", () => {
   });
 
   document.getElementById("generate-btn").addEventListener("click", generatePrintSheet);
+  document.getElementById("export-psd-btn").addEventListener("click", exportEditablePsd);
 });

@@ -58,8 +58,8 @@ class TestCompositeSheet:
         sheet = composite_sheet(RECT_LAYOUT, [red, blue])
 
         assert sheet.size == (400, 300)
-        assert sheet.getpixel((70, 50)) == (255, 0, 0)  # inside slot 1
-        assert sheet.getpixel((250, 50)) == (0, 0, 255)  # inside slot 2
+        assert sheet.getpixel((70, 50)) == (255, 0, 0)  # inside slot 1's patch box
+        assert sheet.getpixel((250, 50)) == (0, 0, 255)  # inside slot 2's patch box
         assert sheet.getpixel((5, 5)) == (255, 255, 255)  # outside any slot
 
     def test_partial_order_leaves_remaining_slots_blank(self):
@@ -75,16 +75,16 @@ class TestCompositeSheet:
         with pytest.raises(SlotCapExceededError):
             composite_sheet(RECT_LAYOUT, [red, red, red])
 
-    def test_off_size_source_is_stretched_to_fill_the_slot(self):
+    def test_off_size_source_is_stretched_to_fill_the_patch_box(self):
         # Real source PSDs vary in size/margin (see
         # PROJECT_INSTRUCTIONS.md section 4, "Decision -- trim and fit"),
         # so an off-size source is trimmed to content and stretched to
-        # fill the slot exactly rather than rejected.
+        # fill the patch box exactly rather than rejected.
         wrong_size = Image.new("RGB", (50, 50), (255, 0, 0))
 
         sheet = composite_sheet(RECT_LAYOUT, [wrong_size])
 
-        assert sheet.getpixel((70, 50)) == (255, 0, 0)  # fills the whole slot
+        assert sheet.getpixel((70, 50)) == (255, 0, 0)  # fills the patch box
         assert sheet.getpixel((250, 50)) == (255, 255, 255)  # slot 2 still empty
 
     def test_source_with_transparent_margin_is_trimmed_and_fit(self):
@@ -97,10 +97,13 @@ class TestCompositeSheet:
 
         sheet = composite_sheet(RECT_LAYOUT, [source])
 
-        # The trimmed green content now fills the entire slot -- no gap
-        # between it and the slot boundary/stroke.
-        assert sheet.getpixel((25, 25)) == (0, 255, 0)  # near slot's top-left corner
-        assert sheet.getpixel((115, 75)) == (0, 255, 0)  # near slot's bottom-right corner
+        # The trimmed green content now fills the entire patch box -- no
+        # gap between it and the patch box boundary/stroke. Slot 1 is
+        # x=20,y=20,w=100,h=60; the patch box is inset 22.5px per side
+        # (boundary x:42.5-97.5, y:42.5-57.5), and stays green clear
+        # across its interior width, away from the top/bottom stroke band.
+        assert sheet.getpixel((50, 50)) == (0, 255, 0)
+        assert sheet.getpixel((90, 50)) == (0, 255, 0)
 
     def test_solid_black_background_is_not_treated_as_empty(self):
         # getbbox() on a plain RGB image treats pure black as "empty" --
@@ -121,20 +124,21 @@ class TestCompositeSheet:
 
 
 class TestSlotStroke:
-    """5px black inside stroke drawn around each filled slot, as a
-    cut/registration guide -- rectangle for rectangular slots, circle
+    """5px black inside stroke drawn around each filled slot's patch box,
+    as a cut/registration guide -- rectangle for rectangular slots, circle
     for circular slots. Only filled slots get one."""
 
     def test_rectangular_slot_gets_inside_stroke(self):
-        # Slot 1: x=20,y=20,w=100,h=60 -> boundary x:20-120, y:20-80.
+        # Slot 1: x=20,y=20,w=100,h=60. Rectangular patch box is inset
+        # 22.5px per side -> boundary x:42.5-97.5, y:42.5-57.5.
         red = Image.new("RGB", (100, 60), (255, 0, 0))
 
         sheet = composite_sheet(RECT_LAYOUT, [red])
 
-        # Outer edge of the stroke sits exactly on the slot boundary.
-        assert sheet.getpixel((20, 50)) == (0, 0, 0)
-        # Stroke grows inward 5px, not outward -- nothing outside the slot.
-        assert sheet.getpixel((19, 50)) == (255, 255, 255)
+        # Outer edge of the stroke sits exactly on the patch box boundary.
+        assert sheet.getpixel((42, 50)) == (0, 0, 0)
+        # Stroke grows inward 5px, not outward -- nothing outside the patch box.
+        assert sheet.getpixel((41, 50)) == (255, 255, 255)
         # Interior (away from the 5px band) keeps the pasted image color.
         assert sheet.getpixel((70, 50)) == (255, 0, 0)
 
@@ -146,17 +150,18 @@ class TestSlotStroke:
         assert sheet.getpixel((200, 50)) == (255, 255, 255)  # no stroke drawn
 
     def test_circular_slot_gets_circular_inside_stroke(self):
-        # Slot: x=20,y=20,w=100,h=100 -> a circle inscribed in that
-        # square, horizontal edges at x=20 and x=120 along the vertical center.
+        # Slot: x=20,y=20,w=100,h=100. The circular patch box is inset
+        # 21px per side -> a 58x58 square (x:41-99, y:41-99, same center
+        # as the slot) with a circle inscribed in it.
         yellow = Image.new("RGB", (100, 100), (230, 200, 0))
 
         sheet = composite_sheet(CIRCULAR_LAYOUT, [yellow])
 
-        assert sheet.getpixel((20, 70)) == (0, 0, 0)  # left edge of the circle
-        assert sheet.getpixel((19, 70)) == (255, 255, 255)  # nothing outside it
+        assert sheet.getpixel((41, 70)) == (0, 0, 0)  # left edge of the circle
+        assert sheet.getpixel((40, 70)) == (255, 255, 255)  # nothing outside it
         assert sheet.getpixel((70, 70)) == (230, 200, 0)  # interior untouched
-        # A rectangle stroke would blacken the square's corner; a circle
-        # stroke must not, since the corner lies outside the circle --
-        # it stays whatever was pasted there (the square source image
-        # fills its whole bounding box, corners included).
-        assert sheet.getpixel((21, 21)) == (230, 200, 0)
+        # A rectangle stroke would blacken the patch box's corner; a
+        # circle stroke must not, since the corner lies outside the
+        # circle -- it stays whatever was pasted there (the square source
+        # image fills its whole bounding box, corners included).
+        assert sheet.getpixel((41, 41)) == (230, 200, 0)
