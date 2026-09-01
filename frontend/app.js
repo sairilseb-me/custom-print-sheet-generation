@@ -6,6 +6,7 @@ const state = {
   totalProducts: 0,
   order: { template_shape: null, lines: [], total_items: 0, cap: null, over_cap: false },
   thumbCache: new Map(),
+  currentProducts: [],
 };
 
 function api() {
@@ -151,6 +152,7 @@ async function runSearch() {
     return;
   }
   state.totalProducts = result.total;
+  state.currentProducts = result.products;
   await renderProductGrid(result.products);
   renderPagination();
 }
@@ -394,6 +396,17 @@ window.addEventListener("pywebviewready", () => {
       runSearch();
     }, 250)
   );
+  document.getElementById("search-input").addEventListener("keydown", async (event) => {
+    if (event.key !== "Enter") return;
+    // Bypass the input debounce so Enter acts on the query as typed,
+    // not on whatever the previous debounced search happened to return.
+    state.query = event.target.value;
+    state.page = 0;
+    await runSearch();
+    const first = state.currentProducts[0];
+    if (!first || state.order.template_shape === null) return;
+    addToOrder(first.folder_path);
+  });
 
   document.getElementById("prev-page-btn").addEventListener("click", () => {
     state.page = Math.max(0, state.page - 1);

@@ -293,7 +293,7 @@ class Api:
     def generate_print_sheet(self) -> dict:
         layout, ordered_products = self._layout_and_ordered_products()
 
-        save_path = self.select_pdf_save_path(default_filename="print_sheet.pdf")
+        save_path = self.select_pdf_save_path(default_filename="A4-PATCH-TEMPLATE-NO MIRROR.pdf")
         if save_path is None:
             return {"cancelled": True}
 
@@ -318,7 +318,7 @@ class Api:
         printing -- see psd_export.py."""
         layout, ordered_products = self._layout_and_ordered_products()
 
-        save_path = self.select_psd_save_path(default_filename="print_sheet.psd")
+        save_path = self.select_psd_save_path(default_filename="A4-PATCH-TEMPLATE-NO MIRROR.psd")
         if save_path is None:
             return {"cancelled": True}
 

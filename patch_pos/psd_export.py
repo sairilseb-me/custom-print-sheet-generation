@@ -14,6 +14,7 @@ from pathlib import Path
 import numpy as np
 import pytoshop.util
 from PIL import Image, ImageDraw
+from pytoshop import image_resources
 from pytoshop.enums import ColorMode, Compression
 from pytoshop.user import nested_layers
 
@@ -39,6 +40,21 @@ def _encode_unicode_string_without_bogus_terminator(s: str) -> bytes:
 
 
 pytoshop.util.encode_unicode_string = _encode_unicode_string_without_bogus_terminator
+
+# nested_layers_to_psd never writes a ResolutionInfo (0x03ED) image
+# resource, so without this the file has no embedded DPI and Photoshop
+# falls back to displaying 72 -- even though the layers themselves are
+# composited at the master template's native 300 DPI pixel grid (see
+# compositor.py). Built by hand since pytoshop's image_resources module
+# has no ResolutionInfo class; layout per the Adobe PSD spec: hRes/vRes as
+# 16.16 fixed-point pixels-per-inch, then a 2-byte display-unit pair.
+_RESOLUTION_INFO_ID = 1005
+
+
+def _resolution_info_block(dpi: int) -> image_resources.GenericImageResourceBlock:
+    fixed = round(dpi * 65536)
+    data = struct.pack(">IhhIhh", fixed, 1, 1, fixed, 1, 1)
+    return image_resources.GenericImageResourceBlock(resource_id=_RESOLUTION_INFO_ID, data=data)
 
 
 def _pil_to_layer(name: str, image: Image.Image, top: int, left: int) -> nested_layers.Image:
@@ -70,7 +86,12 @@ def _guides_layer(layout: TemplateLayout, filled_slots: tuple[Slot, ...]) -> nes
     return _pil_to_layer("Guides", guide, top, left)
 
 
-def export_editable_psd(layout: TemplateLayout, source_images: list[Image.Image], output_path: str | Path) -> None:
+def export_editable_psd(
+    layout: TemplateLayout,
+    source_images: list[Image.Image],
+    output_path: str | Path,
+    dpi: int = 300,
+) -> None:
     """Composite `source_images` into `layout`'s slots exactly like
     composite_sheet (same trim-and-fit, same patch box per slot), but
     write the result as a layered PSD: one named layer per filled slot
@@ -93,6 +114,7 @@ def export_editable_psd(layout: TemplateLayout, source_images: list[Image.Image]
     # nested_layers_to_psd wants layers listed topmost-first.
     layers = [_guides_layer(layout, filled_slots), *patch_layers, background] if filled_slots else [background]
     psd = nested_layers.nested_layers_to_psd(layers, ColorMode.rgb, compression=_COMPRESSION)
+    psd.image_resources.blocks.append(_resolution_info_block(dpi))
 
     with open(output_path, "wb") as f:
         psd.write(f)
