@@ -20,6 +20,9 @@ _SKU_FOLDER_PATTERN = re.compile(r"^(MP-P-(\d+))\s*-\s*(.+)$")
 
 _THUMBNAIL_DIR_CANDIDATES = (".", "PATCH-PHOTO-TEMPLATE-assets")
 
+_RECT_SOURCE_FILENAME = "1-image-template.psd"
+_CIRCULAR_SOURCE_FILENAME = "1-image-template-circular.psd"
+
 
 @dataclass(frozen=True)
 class ProductRecord:
@@ -55,24 +58,35 @@ def parse_sku_folder_name(folder_name: str) -> tuple[str, int, str] | None:
     return sku, int(number), name.strip()
 
 
+def _find_by_filename_anywhere(folder: Path, filename: str) -> Path | None:
+    """Search the whole folder tree for a file matching `filename`
+    (case-insensitive), regardless of which subfolder it's in -- real
+    product folders place the source PSD in inconsistent locations (inside
+    '3x2-images', a differently-cased/singular variant of that name,
+    directly at the SKU root, etc.). When more than one match exists,
+    prefer the shallowest path, then alphabetical, for a deterministic
+    pick."""
+    matches = sorted(
+        (p for p in folder.rglob("*") if p.is_file() and p.name.lower() == filename),
+        key=lambda p: (len(p.relative_to(folder).parts), str(p)),
+    )
+    return matches[0] if matches else None
+
+
 def find_source_psd(folder: Path) -> tuple[str, Path] | None:
     """Locate a product's compositing-source PSD. Returns (shape, path),
     or None if the folder has neither the rectangular nor the circular
-    file -- those folders are skipped from the catalog entirely (see
-    PROJECT_INSTRUCTIONS.md section 4, "Decision" on unmatched folders).
+    file anywhere in its tree -- those folders are skipped from the
+    catalog entirely (see PROJECT_INSTRUCTIONS.md section 4, "Decision" on
+    unmatched folders).
     """
-    rect_path = folder / "3x2-images" / "1-image-template.psd"
-    if rect_path.is_file():
+    rect_path = _find_by_filename_anywhere(folder, _RECT_SOURCE_FILENAME)
+    if rect_path is not None:
         return "rectangular", rect_path
 
-    # Usually inside 3x2-images/, but some folders put it directly at the
-    # SKU folder root instead -- check both.
-    for circular_path in (
-        folder / "3x2-images" / "1-image-template-circular.psd",
-        folder / "1-image-template-circular.psd",
-    ):
-        if circular_path.is_file():
-            return "circular", circular_path
+    circular_path = _find_by_filename_anywhere(folder, _CIRCULAR_SOURCE_FILENAME)
+    if circular_path is not None:
+        return "circular", circular_path
 
     return None
 

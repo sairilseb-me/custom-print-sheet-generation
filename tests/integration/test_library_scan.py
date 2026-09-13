@@ -46,6 +46,34 @@ class TestScanLibrary:
         assert len(result.products) == 1
         assert result.products[0].shape == "circular"
 
+    def test_images_subdir_case_and_singular_variant_is_found(self, tmp_path):
+        # Real folders MP-P-665 and MP-P-666 use "3X2-image" (capitalized,
+        # singular) instead of the usual "3x2-images".
+        _touch(tmp_path / "MP-P-665 - PHILIPPINE FLAG CAMO" / "3X2-image" / "1-image-template.psd")
+
+        result = scan_library(tmp_path)
+
+        assert len(result.products) == 1
+        assert result.products[0].shape == "rectangular"
+
+    def test_source_found_in_arbitrary_subfolder(self, tmp_path):
+        # The source PSD can end up in a subfolder name we've never seen
+        # before -- the scanner must find it by filename regardless of
+        # where in the folder tree it lives, not just known subfolder names.
+        _touch(
+            tmp_path
+            / "MP-P-700 - RANDOM STRUCTURE"
+            / "some"
+            / "nested"
+            / "path"
+            / "1-image-template.psd"
+        )
+
+        result = scan_library(tmp_path)
+
+        assert len(result.products) == 1
+        assert result.products[0].shape == "rectangular"
+
     def test_folder_missing_source_is_skipped(self, tmp_path):
         # Legacy structure with no 1-image-template*.psd at all (e.g. the
         # real MP-P-449 CAPTAIN AMERICA folder).
