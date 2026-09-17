@@ -18,7 +18,7 @@ history and decisions behind each feature below.
 - **PDF generation:** [reportlab](https://www.reportlab.com/)
 - **Catalog storage:** SQLite (stdlib)
 - **Packaging:** [PyInstaller](https://pyinstaller.org/) → a portable
-  macOS `.app`
+  macOS `.app` or Windows `.exe` folder, built from the same `build.spec`
 
 ## Features
 
@@ -127,6 +127,15 @@ For development (tests, packaging):
 
 ## Packaging
 
+The app is built and tested on macOS first, but the codebase has no
+Mac-only shortcuts -- pywebview runs on Windows via its built-in
+EdgeChromium backend (requires the WebView2 Runtime, preinstalled on
+Windows 10/11), and `build.spec` is the same file on both platforms.
+PyInstaller does not cross-compile, though, so each build must run on
+its target OS.
+
+### macOS
+
 ```bash
 .venv/bin/pyinstaller build.spec --noconfirm
 ```
@@ -134,6 +143,21 @@ For development (tests, packaging):
 Produces `dist/PrintSheetPOS.app`, a portable, unsigned macOS app that
 runs directly off a flash drive (right-click → Open on first launch on
 a new Mac, since it isn't notarized).
+
+### Windows
+
+On a Windows machine, in a venv with `requirements.txt` and
+`requirements-dev.txt` installed:
+
+```powershell
+.venv\Scripts\pip install -r requirements.txt -r requirements-dev.txt
+.venv\Scripts\pyinstaller build.spec --noconfirm
+```
+
+Produces `dist\PrintSheetPOS\`, containing `PrintSheetPOS.exe` and its
+supporting files -- copy the whole folder to the flash drive and run the
+`.exe` directly, no install step. It's unsigned, so Windows SmartScreen
+may warn on first launch ("More info" → "Run anyway").
 
 ## Project structure
 

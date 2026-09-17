@@ -5,6 +5,12 @@
 # Targets main.py (not patch_pos/app.py directly) -- running app.py as
 # the top-level script breaks its relative imports, since there's no
 # parent package in that context. See main.py's docstring.
+#
+# Cross-platform: this same spec produces dist/PrintSheetPOS.app on
+# macOS and dist/PrintSheetPOS/PrintSheetPOS.exe on Windows. The BUNDLE
+# step below only has meaning on macOS -- PyInstaller no-ops it on other
+# platforms -- so no platform branching is needed here. PyInstaller does
+# not cross-compile, though: build on the target OS itself.
 
 a = Analysis(
     ['main.py'],
